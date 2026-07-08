@@ -7,20 +7,15 @@ export type Settings = {
   cutCards: number;
   countValues: CountValues;
   tieThreshold: number;
-  pairThreshold: number;
 };
 
 export type Probabilities = {
   playerWin: number;
   bankerWin: number;
   tie: number;
-  playerPair: number;
-  bankerPair: number;
 };
 
 export type TargetOrder = 'Player' | 'Banker' | 'No Bet';
 export type BetOrder = 'NONE' | 'LOW' | 'MID' | 'HIGH';
-export type BestBet = 'Player' | 'Banker' | 'Tie' | 'Player Pair' | 'Banker Pair' | 'No Bet';
-export type SideBetName = 'Tie' | 'Player Pair' | 'Banker Pair';
-export type SideBetOrder = 'NONE' | 'LOW' | 'MID' | 'HIGH';
-export type BestSideBet = SideBetName | 'No Bet';
+export type BestBet = 'Player' | 'Banker' | 'Tie' | 'No Bet';
+export type TieBetOrder = 'NONE' | 'LOW' | 'MID' | 'HIGH';

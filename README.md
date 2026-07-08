@@ -10,9 +10,9 @@ A React, TypeScript, Vite, and Tailwind CSS web app for baccarat card tracking a
 - Deck count options: 1 / 2 / 4 / 6 / 8
 - Remaining card counts and ratios
 - Bet-RC, Bet-TC, and Effective TC
-- TargetOrder, BetOrder, and Best Side Bet
-- Player, Banker, Tie, Player Pair, and Banker Pair probabilities
-- Tie and Pair EV display
+- TargetOrder, BetOrder, and Best Bet
+- Player, Banker, and Tie probabilities
+- Player, Banker, and Tie EV display
 - localStorage persistence
 - No external network calls from the app
 

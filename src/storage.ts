@@ -27,7 +27,6 @@ export function loadSettings(): Settings {
       cutCards: normalizeNumber(parsed.cutCards, DEFAULT_SETTINGS.cutCards, 1, 416),
       countValues,
       tieThreshold: normalizeNumber(parsed.tieThreshold, DEFAULT_SETTINGS.tieThreshold, 0, 1),
-      pairThreshold: normalizeNumber(parsed.pairThreshold, DEFAULT_SETTINGS.pairThreshold, 0, 1),
     };
   } catch {
     return DEFAULT_SETTINGS;

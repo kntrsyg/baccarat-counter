@@ -22,13 +22,10 @@ export const DEFAULT_SETTINGS: Settings = {
   cutCards: 166,
   countValues: DEFAULT_COUNT_VALUES,
   tieThreshold: 0.1,
-  pairThreshold: 0.085,
 };
 
 export const EMPTY_PROBABILITIES: Probabilities = {
   playerWin: 0,
   bankerWin: 0,
   tie: 0,
-  playerPair: 0,
-  bankerPair: 0,
 };

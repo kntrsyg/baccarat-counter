@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  bankerEv,
   betOrder,
   bestBet,
-  bestSideBet,
   createRemainingShoe,
   effectiveRest,
   effectiveTrueCount,
   estimateProbabilities,
-  pairEv,
+  playerEv,
   remainingPercent,
   runningCount,
-  sideBetOrder,
   targetOrder,
+  tieBetOrder,
   tieEv,
   totalCards,
   trueCount,
@@ -36,7 +36,6 @@ function App() {
   const target = targetOrder(effectiveTc);
   const bet = betOrder(effectiveTc);
   const best = bestBet(target, probabilities, settings);
-  const bestSide = bestSideBet(probabilities);
 
   useEffect(() => {
     saveSettings(settings);
@@ -95,7 +94,7 @@ function App() {
         <section className="grid flex-1 gap-3 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-3">
             <OrderPanel target={target} bet={bet} best={best} effectiveTc={effectiveTc} />
-            <SideBetPanel probabilities={probabilities} bestSideBet={bestSide} />
+            <OutcomePanel probabilities={probabilities} isEstimating={isEstimating} />
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Metric label="Bet-RC" value={formatNumber(rc, 1)} />
@@ -105,8 +104,6 @@ function App() {
               <Metric label="Cut" value={String(settings.cutCards)} />
               <Metric label="EffectiveRest" value={String(effRest)} />
             </div>
-
-            <ProbabilityPanel probabilities={probabilities} isEstimating={isEstimating} />
           </div>
 
           <div className="space-y-3">
@@ -148,20 +145,22 @@ function OrderPanel({
         : 'text-white';
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-center">
-      <div className={`text-5xl font-black leading-none tracking-normal sm:text-6xl ${tone}`}>{target}</div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-zinc-900 p-3">
-          <div className="label">Effective TC</div>
-          <div className="mt-1 font-mono text-4xl font-black text-yellow-300">{formatNumber(effectiveTc, 2)}</div>
+    <section className="rounded-lg border border-zinc-700 bg-zinc-950 p-4 text-center sm:p-5">
+      <div className="label">TargetOrder</div>
+      <div className={`mt-2 text-6xl font-black leading-none tracking-normal sm:text-7xl ${tone}`}>{target}</div>
+      <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-2">
+        <div className="rounded-lg border border-yellow-900/70 bg-yellow-950/30 p-3 sm:p-4">
+          <div className="label text-yellow-600">Effective TC</div>
+          <div className="mt-1 font-mono text-5xl font-black text-yellow-300 sm:text-6xl">{formatNumber(effectiveTc, 2)}</div>
         </div>
         <div className="rounded-lg bg-zinc-900 p-3">
           <div className="label">BetOrder</div>
-          <div className="mt-2 text-3xl font-black">{bet}</div>
+          <div className="mt-3 text-3xl font-black sm:text-4xl">{bet}</div>
         </div>
       </div>
-      <div className="mt-3 rounded-lg bg-emerald-950 px-3 py-2 text-sm font-black text-emerald-200">
-        Best Bet: {best}
+      <div className="mt-3 border-t border-zinc-800 pt-3">
+        <div className="label">Best Bet</div>
+        <div className="mt-1 text-4xl font-black text-emerald-300 sm:text-5xl">{best}</div>
       </div>
     </section>
   );
@@ -178,116 +177,93 @@ function Metric({ label, value, important = false }: { label: string; value: str
   );
 }
 
-function ProbabilityPanel({
+function OutcomePanel({
   probabilities,
   isEstimating,
 }: {
   probabilities: Probabilities;
   isEstimating: boolean;
 }) {
+  const tieOrder = tieBetOrder(probabilities.tie);
+
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-base font-black">Probabilities</h2>
+    <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-black">Outcome Monitor</h2>
         <span className="text-xs font-bold text-zinc-500">{isEstimating ? 'SIMULATING' : '10,000 TRIALS'}</span>
       </div>
-      <ProbabilityRow label="Player" value={probabilities.playerWin} />
-      <ProbabilityRow label="Banker" value={probabilities.bankerWin} />
-      <ProbabilityRow label="Tie" value={probabilities.tie} />
-      <ProbabilityRow label="Player Pair" value={probabilities.playerPair} />
-      <ProbabilityRow label="Banker Pair" value={probabilities.bankerPair} />
-    </section>
-  );
-}
 
-function SideBetPanel({
-  probabilities,
-  bestSideBet,
-}: {
-  probabilities: Probabilities;
-  bestSideBet: string;
-}) {
-  const tie = {
-    label: 'Tie',
-    probability: probabilities.tie,
-    ev: tieEv(probabilities.tie),
-    order: sideBetOrder('Tie', probabilities.tie),
-  };
-  const playerPair = {
-    label: 'Player Pair',
-    probability: probabilities.playerPair,
-    ev: pairEv(probabilities.playerPair),
-    order: sideBetOrder('Player Pair', probabilities.playerPair),
-  };
-  const bankerPair = {
-    label: 'Banker Pair',
-    probability: probabilities.bankerPair,
-    ev: pairEv(probabilities.bankerPair),
-    order: sideBetOrder('Banker Pair', probabilities.bankerPair),
-  };
-
-  return (
-    <section className="rounded-lg border border-emerald-900/70 bg-emerald-950/30 p-3">
-      <div className="mb-3 rounded-lg bg-black/40 p-3 text-center">
-        <div className="label">Best Side Bet</div>
-        <div className="mt-1 text-3xl font-black text-emerald-200 sm:text-4xl">{bestSideBet}</div>
+      <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-4 text-center">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-black text-emerald-200">Tie</div>
+          <SignalBadge signal={tieOrder} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <OutcomeValue label="Probability" value={formatPercent(probabilities.tie)} large />
+          <OutcomeValue label="EV (9x)" value={formatSignedPercent(tieEv(probabilities.tie))} large tone={evTone(tieEv(probabilities.tie))} />
+        </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
-        <SideBetCard {...tie} />
-        <SideBetCard {...playerPair} />
-        <SideBetCard {...bankerPair} />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <OutcomeCard label="Player" probability={probabilities.playerWin} ev={playerEv(probabilities)} />
+        <OutcomeCard label="Banker" probability={probabilities.bankerWin} ev={bankerEv(probabilities)} />
       </div>
     </section>
   );
 }
 
-function SideBetCard({
+function OutcomeCard({
   label,
   probability,
   ev,
-  order,
 }: {
   label: string;
   probability: number;
   ev: number;
-  order: string;
 }) {
-  const evTone = ev > 0 ? 'text-emerald-300' : 'text-zinc-400';
-  const orderTone =
-    order === 'HIGH'
-      ? 'bg-emerald-400 text-black'
-      : order === 'MID'
-        ? 'bg-yellow-300 text-black'
-        : order === 'LOW'
-          ? 'bg-cyan-300 text-black'
-          : 'bg-zinc-800 text-zinc-300';
-
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-black text-zinc-200">{label}</div>
-        <div className={`rounded-md px-2 py-1 text-xs font-black ${orderTone}`}>{order}</div>
-      </div>
-      <div className="mt-3">
-        <div className="label">Probability</div>
-        <div className="font-mono text-3xl font-black text-white">{formatPercent(probability)}</div>
-      </div>
-      <div className="mt-2">
-        <div className="label">EV</div>
-        <div className={`font-mono text-3xl font-black ${evTone}`}>{formatSignedPercent(ev)}</div>
-      </div>
+      <div className="text-sm font-black text-zinc-200">{label}</div>
+      <OutcomeValue label="Probability" value={formatPercent(probability)} />
+      <OutcomeValue label="EV" value={formatSignedPercent(ev)} tone={evTone(ev)} />
     </div>
   );
 }
 
-function ProbabilityRow({ label, value }: { label: string; value: number }) {
+function OutcomeValue({
+  label,
+  value,
+  large = false,
+  tone = 'text-white',
+}: {
+  label: string;
+  value: string;
+  large?: boolean;
+  tone?: string;
+}) {
   return (
-    <div className="flex items-center justify-between border-t border-zinc-900 py-2 first:border-t-0">
-      <span className="text-sm font-bold text-zinc-300">{label}</span>
-      <span className="font-mono text-base font-black">{formatPercent(value)}</span>
+    <div className="mt-2">
+      <div className="label">{label}</div>
+      <div className={`font-mono font-black ${large ? 'text-4xl sm:text-5xl' : 'text-2xl sm:text-3xl'} ${tone}`}>{value}</div>
     </div>
   );
+}
+
+function SignalBadge({ signal }: { signal: string }) {
+  const tone =
+    signal === 'HIGH'
+      ? 'bg-emerald-400 text-black'
+      : signal === 'MID'
+        ? 'bg-yellow-300 text-black'
+        : signal === 'LOW'
+          ? 'bg-cyan-300 text-black'
+          : 'bg-zinc-800 text-zinc-300';
+
+  return <div className={`rounded-md px-3 py-1 text-xs font-black ${tone}`}>{signal}</div>;
+}
+
+function evTone(ev: number) {
+  return ev > 0 ? 'text-emerald-300' : 'text-zinc-400';
 }
 
 function RemainingTable({ shoe }: { shoe: Record<Rank, number> }) {
@@ -447,12 +423,6 @@ function ConfigDialog({
               value={draft.tieThreshold}
               max={0.25}
               onChange={(tieThreshold) => setDraft((current) => ({ ...current, tieThreshold }))}
-            />
-            <SliderField
-              label="Pair"
-              value={draft.pairThreshold}
-              max={0.2}
-              onChange={(pairThreshold) => setDraft((current) => ({ ...current, pairThreshold }))}
             />
           </section>
         </div>

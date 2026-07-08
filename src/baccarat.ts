@@ -1,15 +1,13 @@
 import { EMPTY_PROBABILITIES, MONTE_CARLO_TRIALS, RANKS } from './constants';
 import type {
   BestBet,
-  BestSideBet,
   BetOrder,
   CountValues,
   Probabilities,
   Rank,
   Settings,
-  SideBetName,
-  SideBetOrder,
   TargetOrder,
+  TieBetOrder,
 } from './types';
 
 export type Shoe = Record<Rank, number>;
@@ -69,42 +67,26 @@ export function bestBet(target: TargetOrder, probabilities: Probabilities, setti
   if (target === 'Player') return 'Player';
   if (target === 'Banker') return 'Banker';
   if (probabilities.tie >= settings.tieThreshold) return 'Tie';
-  if (probabilities.playerPair >= settings.pairThreshold) return 'Player Pair';
-  if (probabilities.bankerPair >= settings.pairThreshold) return 'Banker Pair';
   return 'No Bet';
+}
+
+export function playerEv(probabilities: Probabilities) {
+  return probabilities.playerWin - probabilities.bankerWin;
+}
+
+export function bankerEv(probabilities: Probabilities) {
+  return probabilities.bankerWin * 0.95 - probabilities.playerWin;
 }
 
 export function tieEv(tieProbability: number) {
   return tieProbability * 9 - (1 - tieProbability);
 }
 
-export function pairEv(pairProbability: number) {
-  return pairProbability * 11 - (1 - pairProbability);
-}
-
-export function sideBetOrder(name: SideBetName, probability: number): SideBetOrder {
-  if (name === 'Tie') {
-    if (probability >= 0.115) return 'HIGH';
-    if (probability >= 0.108) return 'MID';
-    if (probability >= 0.103) return 'LOW';
-    return 'NONE';
-  }
-
-  if (probability >= 0.098) return 'HIGH';
-  if (probability >= 0.09) return 'MID';
-  if (probability >= 0.085) return 'LOW';
+export function tieBetOrder(probability: number): TieBetOrder {
+  if (probability >= 0.115) return 'HIGH';
+  if (probability >= 0.108) return 'MID';
+  if (probability >= 0.103) return 'LOW';
   return 'NONE';
-}
-
-export function bestSideBet(probabilities: Probabilities): BestSideBet {
-  const candidates: Array<{ name: SideBetName; ev: number }> = [
-    { name: 'Tie', ev: tieEv(probabilities.tie) },
-    { name: 'Player Pair', ev: pairEv(probabilities.playerPair) },
-    { name: 'Banker Pair', ev: pairEv(probabilities.bankerPair) },
-  ];
-
-  const best = candidates.reduce((currentBest, candidate) => (candidate.ev > currentBest.ev ? candidate : currentBest));
-  return best.ev > 0 ? best.name : 'No Bet';
 }
 
 export function remainingPercent(shoe: Shoe, rank: Rank) {
@@ -128,14 +110,10 @@ export function estimateProbabilities(shoe: Shoe, trials = MONTE_CARLO_TRIALS): 
     if (result === 'tie') tie += 1;
   }
 
-  const pair = exactPairProbability(shoe);
-
   return {
     playerWin: playerWin / trials,
     bankerWin: bankerWin / trials,
     tie: tie / trials,
-    playerPair: pair,
-    bankerPair: pair,
   };
 }
 
@@ -218,27 +196,4 @@ function winner(player: number, banker: number): Winner {
   if (player > banker) return 'player';
   if (banker > player) return 'banker';
   return 'tie';
-}
-
-function exactPairProbability(shoe: Shoe) {
-  const rest = totalCards(shoe);
-  if (rest < 2) return 0;
-
-  const nonTenMatchingPairs = RANKS
-    .filter((rank) => rank !== '10')
-    .reduce((sum, rank) => sum + shoe[rank] * Math.max(shoe[rank] - 1, 0), 0);
-  const tenMatchingPairs = tenRankMatchingPairs(shoe['10']);
-  const matchingPairs = nonTenMatchingPairs + tenMatchingPairs;
-
-  return matchingPairs / (rest * (rest - 1));
-}
-
-function tenRankMatchingPairs(tenBucketCount: number) {
-  const baseCount = Math.floor(tenBucketCount / 4);
-  const remainder = tenBucketCount % 4;
-
-  return Array.from({ length: 4 }, (_, index) => baseCount + (index < remainder ? 1 : 0)).reduce(
-    (sum, count) => sum + count * Math.max(count - 1, 0),
-    0,
-  );
 }
