@@ -1,13 +1,11 @@
-import { EMPTY_PROBABILITIES, MONTE_CARLO_TRIALS, RANKS } from './constants';
+import { EMPTY_SIMULATION_RESULT, MONTE_CARLO_TRIALS, RANKS } from './constants';
 import type {
   BestBet,
   BetOrder,
   CountValues,
-  Probabilities,
   Rank,
-  Settings,
+  SimulationResult,
   TargetOrder,
-  TieBetOrder,
 } from './types';
 
 export type Shoe = Record<Rank, number>;
@@ -63,30 +61,26 @@ export function betOrder(effectiveTc: number): BetOrder {
   return 'HIGH';
 }
 
-export function bestBet(target: TargetOrder, probabilities: Probabilities, settings: Settings): BestBet {
-  if (target === 'Player') return 'Player';
-  if (target === 'Banker') return 'Banker';
-  if (probabilities.tie >= settings.tieThreshold) return 'Tie';
-  return 'No Bet';
+export function playerEv(result: SimulationResult) {
+  return result.playerWin - result.bankerWin;
 }
 
-export function playerEv(probabilities: Probabilities) {
-  return probabilities.playerWin - probabilities.bankerWin;
-}
-
-export function bankerEv(probabilities: Probabilities) {
-  return probabilities.bankerWin * 0.95 - probabilities.playerWin;
+export function bankerEv(result: SimulationResult) {
+  return result.bankerWin * 0.95 - result.playerWin;
 }
 
 export function tieEv(tieProbability: number) {
   return tieProbability * 9 - (1 - tieProbability);
 }
 
-export function tieBetOrder(probability: number): TieBetOrder {
-  if (probability >= 0.115) return 'HIGH';
-  if (probability >= 0.108) return 'MID';
-  if (probability >= 0.103) return 'LOW';
-  return 'NONE';
+export function bestBet(result: SimulationResult): BestBet {
+  const candidates: Array<{ name: Exclude<BestBet, 'No Bet'>; ev: number }> = [
+    { name: 'Player', ev: playerEv(result) },
+    { name: 'Banker', ev: bankerEv(result) },
+    { name: 'Tie', ev: tieEv(result.tie) },
+  ];
+  const best = candidates.reduce((current, candidate) => candidate.ev > current.ev ? candidate : current);
+  return best.ev > 0 ? best.name : 'No Bet';
 }
 
 export function remainingPercent(shoe: Shoe, rank: Rank) {
@@ -95,8 +89,8 @@ export function remainingPercent(shoe: Shoe, rank: Rank) {
   return shoe[rank] / rest;
 }
 
-export function estimateProbabilities(shoe: Shoe, trials = MONTE_CARLO_TRIALS): Probabilities {
-  if (totalCards(shoe) < 6) return EMPTY_PROBABILITIES;
+export function estimateProbabilities(shoe: Shoe, trials = MONTE_CARLO_TRIALS): SimulationResult {
+  if (totalCards(shoe) < 6) return { ...EMPTY_SIMULATION_RESULT, trialCount: trials };
 
   let playerWin = 0;
   let bankerWin = 0;
@@ -114,6 +108,10 @@ export function estimateProbabilities(shoe: Shoe, trials = MONTE_CARLO_TRIALS): 
     playerWin: playerWin / trials,
     bankerWin: bankerWin / trials,
     tie: tie / trials,
+    playerWinCount: playerWin,
+    bankerWinCount: bankerWin,
+    tieCount: tie,
+    trialCount: trials,
   };
 }
 

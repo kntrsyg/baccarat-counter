@@ -11,19 +11,18 @@ import {
   remainingPercent,
   runningCount,
   targetOrder,
-  tieBetOrder,
   tieEv,
   totalCards,
   trueCount,
 } from './baccarat';
-import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_PROBABILITIES, RANKS } from './constants';
+import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_SIMULATION_RESULT, RANKS } from './constants';
 import { loadHistory, loadSettings, saveHistory, saveSettings } from './storage';
-import type { Probabilities, Rank, Settings } from './types';
+import type { Rank, Settings, SimulationResult } from './types';
 
 function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [history, setHistory] = useState<Rank[]>(() => loadHistory());
-  const [probabilities, setProbabilities] = useState<Probabilities>(EMPTY_PROBABILITIES);
+  const [simulation, setSimulation] = useState<SimulationResult>(EMPTY_SIMULATION_RESULT);
   const [isEstimating, setIsEstimating] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
 
@@ -35,7 +34,7 @@ function App() {
   const effectiveTc = effectiveTrueCount(rc, effRest);
   const target = targetOrder(effectiveTc);
   const bet = betOrder(effectiveTc);
-  const best = bestBet(target, probabilities, settings);
+  const best = bestBet(simulation);
 
   useEffect(() => {
     saveSettings(settings);
@@ -48,7 +47,7 @@ function App() {
   useEffect(() => {
     setIsEstimating(true);
     const timer = window.setTimeout(() => {
-      setProbabilities(estimateProbabilities(shoe));
+      setSimulation(estimateProbabilities(shoe));
       setIsEstimating(false);
     }, 10);
 
@@ -66,14 +65,14 @@ function App() {
 
   function resetCount() {
     setHistory([]);
-    setProbabilities(EMPTY_PROBABILITIES);
+    setSimulation(EMPTY_SIMULATION_RESULT);
   }
 
   function applySettings(next: Settings) {
     setSettings(next);
     if (next.deckCount !== settings.deckCount) {
       setHistory([]);
-      setProbabilities(EMPTY_PROBABILITIES);
+      setSimulation(EMPTY_SIMULATION_RESULT);
     }
     setIsConfigOpen(false);
   }
@@ -94,7 +93,7 @@ function App() {
         <section className="grid flex-1 gap-3 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-3">
             <OrderPanel target={target} bet={bet} best={best} effectiveTc={effectiveTc} />
-            <OutcomePanel probabilities={probabilities} isEstimating={isEstimating} />
+            <OutcomePanel simulation={simulation} isEstimating={isEstimating} />
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Metric label="Bet-RC" value={formatNumber(rc, 1)} />
@@ -178,35 +177,47 @@ function Metric({ label, value, important = false }: { label: string; value: str
 }
 
 function OutcomePanel({
-  probabilities,
+  simulation,
   isEstimating,
 }: {
-  probabilities: Probabilities;
+  simulation: SimulationResult;
   isEstimating: boolean;
 }) {
-  const tieOrder = tieBetOrder(probabilities.tie);
+  const tieValue = tieEv(simulation.tie);
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-black">Outcome Monitor</h2>
-        <span className="text-xs font-bold text-zinc-500">{isEstimating ? 'SIMULATING' : '10,000 TRIALS'}</span>
+        <span className="text-xs font-bold text-zinc-500">
+          {isEstimating ? 'SIMULATING' : `${formatInteger(simulation.trialCount)} TRIALS`}
+        </span>
       </div>
 
       <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-4 text-center">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-lg font-black text-emerald-200">Tie</div>
-          <SignalBadge signal={tieOrder} />
-        </div>
+        <div className="text-lg font-black text-emerald-200">Tie</div>
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <OutcomeValue label="Probability" value={formatPercent(probabilities.tie)} large />
-          <OutcomeValue label="EV (9x)" value={formatSignedPercent(tieEv(probabilities.tie))} large tone={evTone(tieEv(probabilities.tie))} />
+          <OutcomeValue label="Probability" value={formatPercent(simulation.tie)} large />
+          <OutcomeValue label="EV (9x)" value={formatSignedPercent(tieValue)} large tone={evTone(tieValue)} />
         </div>
+        <HitCount hits={simulation.tieCount} trials={simulation.trialCount} />
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <OutcomeCard label="Player" probability={probabilities.playerWin} ev={playerEv(probabilities)} />
-        <OutcomeCard label="Banker" probability={probabilities.bankerWin} ev={bankerEv(probabilities)} />
+        <OutcomeCard
+          label="Player"
+          probability={simulation.playerWin}
+          ev={playerEv(simulation)}
+          hits={simulation.playerWinCount}
+          trials={simulation.trialCount}
+        />
+        <OutcomeCard
+          label="Banker"
+          probability={simulation.bankerWin}
+          ev={bankerEv(simulation)}
+          hits={simulation.bankerWinCount}
+          trials={simulation.trialCount}
+        />
       </div>
     </section>
   );
@@ -216,16 +227,21 @@ function OutcomeCard({
   label,
   probability,
   ev,
+  hits,
+  trials,
 }: {
   label: string;
   probability: number;
   ev: number;
+  hits: number;
+  trials: number;
 }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
       <div className="text-sm font-black text-zinc-200">{label}</div>
       <OutcomeValue label="Probability" value={formatPercent(probability)} />
       <OutcomeValue label="EV" value={formatSignedPercent(ev)} tone={evTone(ev)} />
+      <HitCount hits={hits} trials={trials} />
     </div>
   );
 }
@@ -249,17 +265,15 @@ function OutcomeValue({
   );
 }
 
-function SignalBadge({ signal }: { signal: string }) {
-  const tone =
-    signal === 'HIGH'
-      ? 'bg-emerald-400 text-black'
-      : signal === 'MID'
-        ? 'bg-yellow-300 text-black'
-        : signal === 'LOW'
-          ? 'bg-cyan-300 text-black'
-          : 'bg-zinc-800 text-zinc-300';
-
-  return <div className={`rounded-md px-3 py-1 text-xs font-black ${tone}`}>{signal}</div>;
+function HitCount({ hits, trials }: { hits: number; trials: number }) {
+  return (
+    <div className="mt-3 border-t border-zinc-800/80 pt-2">
+      <div className="label">Hits</div>
+      <div className="font-mono text-sm font-black text-zinc-300">
+        {formatInteger(hits)} / {formatInteger(trials)}
+      </div>
+    </div>
+  );
 }
 
 function evTone(ev: number) {
@@ -416,15 +430,6 @@ function ConfigDialog({
             </div>
           </section>
 
-          <section>
-            <h3 className="config-title">Thresholds</h3>
-            <SliderField
-              label="Tie"
-              value={draft.tieThreshold}
-              max={0.25}
-              onChange={(tieThreshold) => setDraft((current) => ({ ...current, tieThreshold }))}
-            />
-          </section>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2">
@@ -468,41 +473,15 @@ function NumberField({
   );
 }
 
-function SliderField({
-  label,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="mt-3 block rounded-lg bg-zinc-900 px-3 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-black">{label}</span>
-        <span className="font-mono text-sm font-black">{formatPercent(value, 1)}</span>
-      </div>
-      <input
-        className="w-full accent-white"
-        type="range"
-        min={0}
-        max={max}
-        step={0.005}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
 function formatNumber(value: number, digits: number) {
   return value.toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function formatInteger(value: number) {
+  return value.toLocaleString('en-US');
 }
 
 function formatPercent(value: number, digits = 2) {

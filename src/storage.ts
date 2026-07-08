@@ -26,7 +26,6 @@ export function loadSettings(): Settings {
       deckCount,
       cutCards: normalizeNumber(parsed.cutCards, DEFAULT_SETTINGS.cutCards, 1, 416),
       countValues,
-      tieThreshold: normalizeNumber(parsed.tieThreshold, DEFAULT_SETTINGS.tieThreshold, 0, 1),
     };
   } catch {
     return DEFAULT_SETTINGS;

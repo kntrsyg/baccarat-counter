@@ -13,6 +13,8 @@ A React, TypeScript, Vite, and Tailwind CSS web app for baccarat card tracking a
 - TargetOrder, BetOrder, and Best Bet
 - Player, Banker, and Tie probabilities
 - Player, Banker, and Tie EV display
+- Win counts from 10,000 Monte Carlo trials
+- Best Bet selects the highest positive EV; otherwise it displays No Bet
 - localStorage persistence
 - No external network calls from the app
 

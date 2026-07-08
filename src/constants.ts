@@ -1,4 +1,4 @@
-import type { CountValues, Probabilities, Rank, Settings } from './types';
+import type { CountValues, Rank, Settings, SimulationResult } from './types';
 
 export const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 export const DECK_OPTIONS = [1, 2, 4, 6, 8];
@@ -21,11 +21,14 @@ export const DEFAULT_SETTINGS: Settings = {
   deckCount: 8,
   cutCards: 166,
   countValues: DEFAULT_COUNT_VALUES,
-  tieThreshold: 0.1,
 };
 
-export const EMPTY_PROBABILITIES: Probabilities = {
+export const EMPTY_SIMULATION_RESULT: SimulationResult = {
   playerWin: 0,
   bankerWin: 0,
   tie: 0,
+  playerWinCount: 0,
+  bankerWinCount: 0,
+  tieCount: 0,
+  trialCount: MONTE_CARLO_TRIALS,
 };
