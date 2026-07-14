@@ -55,6 +55,16 @@ export function loadSettings(): Settings {
       tieProfitPayout: normalizeNumber(parsed.tieProfitPayout, DEFAULT_SETTINGS.tieProfitPayout, 1, 99),
       minimumBetEV: normalizeNumber(parsed.minimumBetEV, DEFAULT_SETTINGS.minimumBetEV, -1, 1),
       simulationTrials: normalizeSimulationTrials(parsed.simulationTrials),
+      forecastEnabled: normalizeBoolean(parsed.forecastEnabled, DEFAULT_SETTINGS.forecastEnabled),
+      minimumForecastEV: normalizeNumber(parsed.minimumForecastEV, DEFAULT_SETTINGS.minimumForecastEV, -1, 1),
+      confidenceLowMax: normalizeNumber(parsed.confidenceLowMax, DEFAULT_SETTINGS.confidenceLowMax, 0, 100),
+      confidenceMidMax: normalizeNumber(parsed.confidenceMidMax, DEFAULT_SETTINGS.confidenceMidMax, 0, 100),
+      conservativeEVRequired: normalizeBoolean(
+        parsed.conservativeEVRequired,
+        DEFAULT_SETTINGS.conservativeEVRequired,
+      ),
+      minimumForecastTrials: normalizeSimulationTrials(parsed.minimumForecastTrials),
+      showForecastReasons: normalizeBoolean(parsed.showForecastReasons, DEFAULT_SETTINGS.showForecastReasons),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -91,4 +101,8 @@ function normalizeNumber(value: unknown, fallback: number, min: number, max: num
 function normalizeSimulationTrials(value: unknown) {
   const numeric = Number(value);
   return SIMULATION_TRIAL_OPTIONS.includes(numeric) ? numeric : DEFAULT_SETTINGS.simulationTrials;
+}
+
+function normalizeBoolean(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback;
 }

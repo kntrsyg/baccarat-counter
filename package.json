@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:ev": "node scripts/ev-tests.mjs",
+    "test:forecast": "node scripts/forecast-tests.mjs",
+    "test:storage": "node scripts/storage-tests.mjs",
     "verify:initial": "node scripts/verify-initial.mjs"
   },
   "dependencies": {

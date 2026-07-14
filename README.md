@@ -17,8 +17,11 @@ A React, TypeScript, Vite, and Tailwind CSS web app for baccarat card tracking a
 - Real payout-based Player, Banker, and Tie EV display
 - Win counts from configurable Monte Carlo trials
 - Best EV Bet uses the highest EV only when it reaches the configured minimum EV
+- STATISTICAL FORECAST with confidence score, conservative EV, reasons, and warnings
+- Web Worker Monte Carlo execution with stale-result protection
 - Configurable Player / Banker / Tie card weights, Target Score threshold, and Tie Alert threshold
 - Configurable Banker commission, Tie profit payout, minimum bet EV, and simulation trials
+- Configurable Forecast ON/OFF, minimum forecast EV, confidence thresholds, conservative EV requirement, minimum trials, and reason display
 - localStorage persistence
 - No external network calls from the app
 
@@ -41,6 +44,18 @@ EV is calculated only from the current Player / Banker / Tie probabilities and c
 - Default simulation trials: `100,000`
 
 Tie profit payout is pure profit. A 9x Tie payout means 9x profit and 10x total return including the stake.
+
+## Statistical Forecast
+
+The forecast engine combines the current remaining-card composition, Monte Carlo probabilities, payout-based EV, EOR Count Target, Target Score, simulation error, and estimated games before the cut card. It does not claim certainty and does not use streaks, roads, or recent win/loss flow.
+
+Forecast recommendation rules:
+
+- EV is the first gate. If the highest EV is below `minimumForecastEV`, the forecast is `No Bet`.
+- EOR Count Signal is used only for agreement scoring, not as an EV adjustment.
+- Conservative EV uses 95% Monte Carlo confidence intervals.
+- Confidence score is capped at 100 and combines EV, conservative EV, probability edge, count agreement, simulation stability, and penetration.
+- Cut card zone stops the forecast and returns `No Bet`.
 
 ## Tech Stack
 
@@ -67,6 +82,8 @@ pnpm run build
 
 ```bash
 pnpm run test:ev
+pnpm run test:forecast
+pnpm run test:storage
 pnpm run verify:initial
 ```
 

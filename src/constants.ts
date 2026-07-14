@@ -1,4 +1,4 @@
-import type { CountValues, EorWeights, Rank, Settings, SimulationResult } from './types';
+import type { CountValues, EorWeights, ForecastResult, Rank, Settings, SimulationResult } from './types';
 
 export const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 export const DECK_OPTIONS = [1, 2, 4, 6, 8];
@@ -42,6 +42,13 @@ export const DEFAULT_SETTINGS: Settings = {
   tieProfitPayout: 9,
   minimumBetEV: 0.01,
   simulationTrials: MONTE_CARLO_TRIALS,
+  forecastEnabled: true,
+  minimumForecastEV: 0.01,
+  confidenceLowMax: 45,
+  confidenceMidMax: 70,
+  conservativeEVRequired: true,
+  minimumForecastTrials: 100_000,
+  showForecastReasons: true,
 };
 
 export const EMPTY_SIMULATION_RESULT: SimulationResult = {
@@ -52,4 +59,25 @@ export const EMPTY_SIMULATION_RESULT: SimulationResult = {
   bankerWinCount: 0,
   tieCount: 0,
   trialCount: MONTE_CARLO_TRIALS,
+};
+
+export const EMPTY_FORECAST_RESULT: ForecastResult = {
+  target: 'No Bet',
+  confidenceScore: 0,
+  confidenceLevel: 'LOW',
+  recommendedEV: 0,
+  conservativeEV: 0,
+  probability: 0,
+  probabilityEdge: 0,
+  countAgreement: false,
+  simulationStable: false,
+  simulationTrials: MONTE_CARLO_TRIALS,
+  estimatedGamesToCut: 0,
+  intervals: {
+    Player: { lower95: 0, upper95: 0, margin95: 0 },
+    Banker: { lower95: 0, upper95: 0, margin95: 0 },
+    Tie: { lower95: 0, upper95: 0, margin95: 0 },
+  },
+  reasons: ['Forecast is waiting for simulation results.'],
+  warnings: [],
 };

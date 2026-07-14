@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   betOrder,
   calculateEv,
@@ -7,7 +7,6 @@ import {
   effectiveTrueCount,
   eorRunningCounts,
   eorTrueCount,
-  estimateProbabilities,
   probabilitySumWarning,
   remainingPercent,
   runningCount,
@@ -18,9 +17,16 @@ import {
   totalCards,
   trueCount,
 } from './baccarat';
-import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_SIMULATION_RESULT, RANKS, SIMULATION_TRIAL_OPTIONS } from './constants';
+import {
+  DEFAULT_SETTINGS,
+  DECK_OPTIONS,
+  EMPTY_FORECAST_RESULT,
+  EMPTY_SIMULATION_RESULT,
+  RANKS,
+  SIMULATION_TRIAL_OPTIONS,
+} from './constants';
 import { loadHistory, loadSettings, saveHistory, saveSettings } from './storage';
-import type { EvResult, Rank, Settings, SimulationResult } from './types';
+import type { EvResult, ForecastResult, Rank, Settings, SimulationResult } from './types';
 
 type EorWeightKey = 'player' | 'banker' | 'tie';
 
@@ -28,8 +34,12 @@ function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [history, setHistory] = useState<Rank[]>(() => loadHistory());
   const [simulation, setSimulation] = useState<SimulationResult>(EMPTY_SIMULATION_RESULT);
+  const [forecast, setForecast] = useState<ForecastResult>(EMPTY_FORECAST_RESULT);
   const [isEstimating, setIsEstimating] = useState(true);
+  const [forecastWarning, setForecastWarning] = useState('');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
 
   const shoe = useMemo(() => createRemainingShoe(settings.deckCount, history), [settings.deckCount, history]);
   const rest = totalCards(shoe);
@@ -57,13 +67,56 @@ function App() {
 
   useEffect(() => {
     setIsEstimating(true);
+    setForecastWarning('');
     const timer = window.setTimeout(() => {
-      setSimulation(estimateProbabilities(shoe, settings.simulationTrials));
-      setIsEstimating(false);
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+
+      if (!workerRef.current) {
+        workerRef.current = new Worker(new URL('./forecastWorker.ts', import.meta.url), { type: 'module' });
+      }
+
+      const worker = workerRef.current;
+      worker.onmessage = (event: MessageEvent<{
+        requestId: number;
+        simulation?: SimulationResult;
+        forecast?: ForecastResult;
+        error?: string;
+      }>) => {
+        if (event.data.requestId !== requestIdRef.current) return;
+        if (event.data.error || !event.data.simulation || !event.data.forecast) {
+          setForecastWarning(event.data.error || 'Forecast worker failed. Keeping the latest result.');
+          setIsEstimating(false);
+          return;
+        }
+        setSimulation(event.data.simulation);
+        setForecast(event.data.forecast);
+        setIsEstimating(false);
+      };
+      worker.onerror = () => {
+        if (requestId !== requestIdRef.current) return;
+        setForecastWarning('Forecast worker failed. Keeping the latest result.');
+        setIsEstimating(false);
+      };
+      worker.postMessage({
+        requestId,
+        shoe,
+        settings,
+        countTarget: target,
+        targetScore: score,
+        tieAlert: isTieAlertOn,
+        restCards: rest,
+        totalCards: settings.deckCount * 52,
+        effectiveRest: effRest,
+      });
     }, 150);
 
     return () => window.clearTimeout(timer);
-  }, [shoe, settings.simulationTrials]);
+  }, [shoe, settings, target, score, isTieAlertOn, rest, effRest]);
+
+  useEffect(() => {
+    return () => workerRef.current?.terminate();
+  }, []);
 
   function inputCard(rank: Rank) {
     if (shoe[rank] <= 0) return;
@@ -77,6 +130,7 @@ function App() {
   function resetCount() {
     setHistory([]);
     setSimulation(EMPTY_SIMULATION_RESULT);
+    setForecast(EMPTY_FORECAST_RESULT);
   }
 
   function applySettings(next: Settings) {
@@ -84,6 +138,7 @@ function App() {
     if (next.deckCount !== settings.deckCount) {
       setHistory([]);
       setSimulation(EMPTY_SIMULATION_RESULT);
+      setForecast(EMPTY_FORECAST_RESULT);
     }
     setIsConfigOpen(false);
   }
@@ -110,6 +165,14 @@ function App() {
               score={score}
               tieAlertOn={isTieAlertOn}
             />
+            {settings.forecastEnabled && (
+              <ForecastPanel
+                forecast={forecast}
+                isEstimating={isEstimating}
+                warning={forecastWarning}
+                showReasons={settings.showForecastReasons}
+              />
+            )}
             <OutcomePanel
               simulation={simulation}
               evResult={evResult}
@@ -219,6 +282,108 @@ function OrderPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function ForecastPanel({
+  forecast,
+  isEstimating,
+  warning,
+  showReasons,
+}: {
+  forecast: ForecastResult;
+  isEstimating: boolean;
+  warning: string;
+  showReasons: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const targetTone = forecastTargetTone(forecast.target);
+  const confidenceTone = forecastConfidenceTone(forecast.confidenceLevel);
+  const intervalTargets: Array<'Player' | 'Banker' | 'Tie'> =
+    forecast.target === 'No Bet' ? ['Player', 'Banker', 'Tie'] : [forecast.target];
+
+  return (
+    <section className={`rounded-lg border p-4 sm:p-5 ${targetTone.panel}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="label">Statistical Forecast</div>
+          <div className={`mt-1 text-5xl font-black leading-none sm:text-6xl ${targetTone.text}`}>
+            {forecast.target}
+          </div>
+        </div>
+        <button className="control-button h-10 bg-zinc-800" onClick={() => setIsExpanded((current) => !current)}>
+          DETAIL
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <ForecastMetric label="Confidence" value={forecast.confidenceLevel} tone={confidenceTone} />
+        <ForecastMetric label="Score" value={`${forecast.confidenceScore} / 100`} />
+        <ForecastMetric label="Probability" value={formatPercent(forecast.probability)} />
+        <ForecastMetric label="EV" value={formatSignedPercent(forecast.recommendedEV)} tone={evTone(forecast.recommendedEV)} />
+        <ForecastMetric
+          label="Conservative EV"
+          value={formatSignedPercent(forecast.conservativeEV)}
+          tone={evTone(forecast.conservativeEV)}
+        />
+        <ForecastMetric label="Games To Cut" value={`~${forecast.estimatedGamesToCut}`} />
+      </div>
+
+      {isEstimating && <div className="mt-3 text-sm font-black text-yellow-300">Forecast calculating...</div>}
+      {warning && <div className="mt-3 rounded-lg border border-yellow-700 bg-yellow-950/40 px-3 py-2 text-xs font-bold text-yellow-200">{warning}</div>}
+
+      {isExpanded && (
+        <div className="mt-4 border-t border-zinc-800 pt-3">
+          <div className="grid grid-cols-2 gap-2">
+            <ForecastMetric label="Probability Edge" value={formatSignedPercent(forecast.probabilityEdge)} />
+            <ForecastMetric label="Count Agreement" value={forecast.countAgreement ? 'YES' : 'NO'} />
+            <ForecastMetric label="Simulation Stable" value={forecast.simulationStable ? 'YES' : 'NO'} />
+            <ForecastMetric label="Simulation Trials" value={formatIntegerFromForecast(forecast)} />
+          </div>
+
+          <div className="mt-3 rounded-lg border border-zinc-800 bg-black p-3">
+            <div className="label">95% Confidence Interval</div>
+            <div className="mt-2 space-y-1 font-mono text-sm font-bold text-zinc-300">
+              {intervalTargets.map((target) => (
+                <div key={target} className="flex justify-between gap-2">
+                  <span>{target}</span>
+                  <span>{formatInterval(forecast.intervals[target])}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {showReasons && forecast.reasons.length > 0 && (
+            <ForecastList title="Reasons" items={forecast.reasons} />
+          )}
+          {forecast.warnings.length > 0 && <ForecastList title="Warnings" items={forecast.warnings} warning />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ForecastMetric({ label, value, tone = 'text-white' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black p-3">
+      <div className="label">{label}</div>
+      <div className={`mt-1 font-mono text-xl font-black ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+function ForecastList({ title, items, warning = false }: { title: string; items: string[]; warning?: boolean }) {
+  return (
+    <div className="mt-3 rounded-lg border border-zinc-800 bg-black p-3">
+      <div className={`label ${warning ? 'text-yellow-500' : ''}`}>{title}</div>
+      <div className="mt-2 space-y-2">
+        {items.map((item) => (
+          <div key={item} className="text-sm font-bold text-zinc-300">
+            - {item}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -623,6 +788,61 @@ function ConfigDialog({
           </section>
 
           <section>
+            <h3 className="config-title">Forecast</h3>
+            <ToggleField
+              label="Forecast Enabled"
+              value={draft.forecastEnabled}
+              onChange={(forecastEnabled) => setDraft((current) => ({ ...current, forecastEnabled }))}
+            />
+            <NumberField
+              label="Minimum Forecast EV"
+              min={-1}
+              max={1}
+              step={0.001}
+              value={draft.minimumForecastEV}
+              onChange={(minimumForecastEV) => setDraft((current) => ({ ...current, minimumForecastEV }))}
+            />
+            <NumberField
+              label="Confidence LOW Max"
+              min={0}
+              max={100}
+              value={draft.confidenceLowMax}
+              onChange={(confidenceLowMax) => setDraft((current) => ({ ...current, confidenceLowMax }))}
+            />
+            <NumberField
+              label="Confidence MID Max"
+              min={0}
+              max={100}
+              value={draft.confidenceMidMax}
+              onChange={(confidenceMidMax) => setDraft((current) => ({ ...current, confidenceMidMax }))}
+            />
+            <ToggleField
+              label="Conservative EV Required"
+              value={draft.conservativeEVRequired}
+              onChange={(conservativeEVRequired) => setDraft((current) => ({ ...current, conservativeEVRequired }))}
+            />
+            <ToggleField
+              label="Show Forecast Reasons"
+              value={draft.showForecastReasons}
+              onChange={(showForecastReasons) => setDraft((current) => ({ ...current, showForecastReasons }))}
+            />
+            <div className="mt-3">
+              <div className="mb-2 text-sm font-black text-zinc-300">Minimum Simulation Trials</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {SIMULATION_TRIAL_OPTIONS.map((trials) => (
+                  <button
+                    key={trials}
+                    className={`h-11 rounded-lg text-sm font-black ${draft.minimumForecastTrials === trials ? 'bg-white text-black' : 'bg-zinc-800 text-white'}`}
+                    onClick={() => setDraft((current) => ({ ...current, minimumForecastTrials: trials }))}
+                  >
+                    {formatInteger(trials)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section>
             <h3 className="config-title">EOR Style Weights</h3>
             <p className="mb-2 text-xs font-semibold text-zinc-500">
               These EOR values are temporary starting parameters and can be adjusted after testing.
@@ -716,6 +936,29 @@ function NumberField({
   );
 }
 
+function ToggleField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-zinc-900 px-3 py-2">
+      <span className="text-sm font-black">{label}</span>
+      <button
+        type="button"
+        className={`h-9 w-20 rounded-lg text-sm font-black ${value ? 'bg-emerald-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}
+        onClick={() => onChange(!value)}
+      >
+        {value ? 'ON' : 'OFF'}
+      </button>
+    </label>
+  );
+}
+
 function CompactNumberField({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <input
@@ -756,6 +999,27 @@ function formatSignedPercent(value: number) {
   if (!Number.isFinite(value)) return '--';
   const formatted = formatPercent(value);
   return value > 0 ? `+${formatted}` : formatted;
+}
+
+function forecastTargetTone(target: ForecastResult['target']) {
+  if (target === 'Player') return { panel: 'border-cyan-800 bg-cyan-950/30', text: 'text-cyan-300' };
+  if (target === 'Banker') return { panel: 'border-rose-800 bg-rose-950/30', text: 'text-rose-300' };
+  if (target === 'Tie') return { panel: 'border-yellow-800 bg-yellow-950/30', text: 'text-yellow-300' };
+  return { panel: 'border-zinc-800 bg-zinc-950', text: 'text-zinc-200' };
+}
+
+function forecastConfidenceTone(level: ForecastResult['confidenceLevel']) {
+  if (level === 'HIGH') return 'text-emerald-300';
+  if (level === 'MID') return 'text-yellow-300';
+  return 'text-zinc-300';
+}
+
+function formatInterval(interval: ForecastResult['intervals']['Player']) {
+  return `${formatPercent(interval.lower95)}-${formatPercent(interval.upper95)}`;
+}
+
+function formatIntegerFromForecast(forecast: ForecastResult) {
+  return formatInteger(forecast.simulationTrials);
 }
 
 function clamp(value: number, min: number, max: number) {

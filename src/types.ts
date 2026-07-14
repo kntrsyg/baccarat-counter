@@ -25,6 +25,13 @@ export type Settings = {
   tieProfitPayout: number;
   minimumBetEV: number;
   simulationTrials: number;
+  forecastEnabled: boolean;
+  minimumForecastEV: number;
+  confidenceLowMax: number;
+  confidenceMidMax: number;
+  conservativeEVRequired: boolean;
+  minimumForecastTrials: number;
+  showForecastReasons: boolean;
 };
 
 export type SimulationResult = {
@@ -55,4 +62,54 @@ export type EvResult = {
   bestEV: number;
   bestBet: BestBet;
   strength: BetStrength;
+};
+
+export type ForecastTarget = 'Player' | 'Banker' | 'Tie' | 'No Bet';
+export type ConfidenceLevel = 'LOW' | 'MID' | 'HIGH';
+
+export type ForecastSettings = {
+  minimumForecastEV: number;
+  confidenceLowMax: number;
+  confidenceMidMax: number;
+  conservativeEVRequired: boolean;
+  minimumForecastTrials: number;
+  showForecastReasons: boolean;
+  bankerCommissionRate: number;
+  tieProfitPayout: number;
+};
+
+export type ForecastInputs = {
+  simulation: SimulationResult;
+  evResult: EvResult;
+  countTarget: TargetOrder;
+  targetScore: number;
+  tieAlert: boolean;
+  restCards: number;
+  totalCards: number;
+  cutCards: number;
+  effectiveRest: number;
+  settings: ForecastSettings;
+};
+
+export type ProbabilityInterval = {
+  lower95: number;
+  upper95: number;
+  margin95: number;
+};
+
+export type ForecastResult = {
+  target: ForecastTarget;
+  confidenceScore: number;
+  confidenceLevel: ConfidenceLevel;
+  recommendedEV: number;
+  conservativeEV: number;
+  probability: number;
+  probabilityEdge: number;
+  countAgreement: boolean;
+  simulationStable: boolean;
+  simulationTrials: number;
+  estimatedGamesToCut: number;
+  intervals: Record<Exclude<ForecastTarget, 'No Bet'>, ProbabilityInterval>;
+  reasons: string[];
+  warnings: string[];
 };
