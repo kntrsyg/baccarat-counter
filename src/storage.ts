@@ -22,10 +22,30 @@ export function loadSettings(): Settings {
       }
     }
 
+    const eorWeights = { ...DEFAULT_SETTINGS.eorWeights };
+    for (const rank of RANKS) {
+      eorWeights[rank] = { ...DEFAULT_SETTINGS.eorWeights[rank] };
+      const saved = parsed.eorWeights?.[rank];
+      const player = saved?.player;
+      const banker = saved?.banker;
+      const tie = saved?.tie;
+      if (Number.isFinite(player)) eorWeights[rank].player = Number(player);
+      if (Number.isFinite(banker)) eorWeights[rank].banker = Number(banker);
+      if (Number.isFinite(tie)) eorWeights[rank].tie = Number(tie);
+    }
+
     return {
       deckCount,
       cutCards: normalizeNumber(parsed.cutCards, DEFAULT_SETTINGS.cutCards, 1, 416),
       countValues,
+      eorWeights,
+      targetScoreThreshold: normalizeNumber(
+        parsed.targetScoreThreshold,
+        DEFAULT_SETTINGS.targetScoreThreshold,
+        0.1,
+        99,
+      ),
+      tieAlertThreshold: normalizeNumber(parsed.tieAlertThreshold, DEFAULT_SETTINGS.tieAlertThreshold, 0.1, 99),
     };
   } catch {
     return DEFAULT_SETTINGS;

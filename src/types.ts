@@ -2,10 +2,25 @@ export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10';
 
 export type CountValues = Record<Rank, number>;
 
+export type EorWeights = Record<Rank, {
+  player: number;
+  banker: number;
+  tie: number;
+}>;
+
+export type EorCounts = {
+  playerRC: number;
+  bankerRC: number;
+  tieRC: number;
+};
+
 export type Settings = {
   deckCount: number;
   cutCards: number;
   countValues: CountValues;
+  eorWeights: EorWeights;
+  targetScoreThreshold: number;
+  tieAlertThreshold: number;
 };
 
 export type SimulationResult = {

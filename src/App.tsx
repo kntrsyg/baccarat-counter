@@ -6,11 +6,15 @@ import {
   createRemainingShoe,
   effectiveRest,
   effectiveTrueCount,
+  eorRunningCounts,
+  eorTrueCount,
   estimateProbabilities,
   playerEv,
   remainingPercent,
   runningCount,
   targetOrder,
+  targetScore,
+  tieAlert,
   tieEv,
   totalCards,
   trueCount,
@@ -18,6 +22,8 @@ import {
 import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_SIMULATION_RESULT, RANKS } from './constants';
 import { loadHistory, loadSettings, saveHistory, saveSettings } from './storage';
 import type { Rank, Settings, SimulationResult } from './types';
+
+type EorWeightKey = 'player' | 'banker' | 'tie';
 
 function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
@@ -32,9 +38,16 @@ function App() {
   const betTc = trueCount(rc, rest);
   const effRest = effectiveRest(rest, settings.cutCards);
   const effectiveTc = effectiveTrueCount(rc, effRest);
-  const target = targetOrder(effectiveTc);
-  const bet = betOrder(effectiveTc);
+  const eorCounts = eorRunningCounts(history, settings.eorWeights);
+  const playerTC = eorTrueCount(eorCounts.playerRC, effRest);
+  const bankerTC = eorTrueCount(eorCounts.bankerRC, effRest);
+  const tieTC = eorTrueCount(eorCounts.tieRC, effRest);
+  const score = targetScore(playerTC, bankerTC);
+  const target = targetOrder(score, settings.targetScoreThreshold);
+  const bet = betOrder(score);
   const best = bestBet(simulation);
+  const tieValue = tieEv(simulation.tie);
+  const isTieAlertOn = tieAlert(tieTC, tieValue, settings.tieAlertThreshold);
 
   useEffect(() => {
     saveSettings(settings);
@@ -92,17 +105,29 @@ function App() {
 
         <section className="grid flex-1 gap-3 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-3">
-            <OrderPanel target={target} bet={bet} best={best} effectiveTc={effectiveTc} />
+            <OrderPanel
+              target={target}
+              bet={bet}
+              best={best}
+              score={score}
+              tieAlertOn={isTieAlertOn}
+            />
             <OutcomePanel simulation={simulation} isEstimating={isEstimating} />
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Metric label="Bet-RC" value={formatNumber(rc, 1)} />
-              <Metric label="Bet-TC" value={formatNumber(betTc, 2)} />
-              <Metric label="Effective TC" value={formatNumber(effectiveTc, 2)} important />
-              <Metric label="Rest" value={String(rest)} />
-              <Metric label="Cut" value={String(settings.cutCards)} />
-              <Metric label="EffectiveRest" value={String(effRest)} />
-            </div>
+            <CountDetails
+              rc={rc}
+              betTc={betTc}
+              effectiveTc={effectiveTc}
+              rest={rest}
+              cutCards={settings.cutCards}
+              effectiveRestValue={effRest}
+              playerRC={eorCounts.playerRC}
+              bankerRC={eorCounts.bankerRC}
+              tieRC={eorCounts.tieRC}
+              playerTC={playerTC}
+              bankerTC={bankerTC}
+              tieTC={tieTC}
+              score={score}
+            />
           </div>
 
           <div className="space-y-3">
@@ -129,12 +154,14 @@ function OrderPanel({
   target,
   bet,
   best,
-  effectiveTc,
+  score,
+  tieAlertOn,
 }: {
   target: string;
   bet: string;
   best: string;
-  effectiveTc: number;
+  score: number;
+  tieAlertOn: boolean;
 }) {
   const tone =
     target === 'Player'
@@ -147,29 +174,88 @@ function OrderPanel({
     <section className="rounded-lg border border-zinc-700 bg-zinc-950 p-4 text-center sm:p-5">
       <div className="label">TargetOrder</div>
       <div className={`mt-2 text-6xl font-black leading-none tracking-normal sm:text-7xl ${tone}`}>{target}</div>
-      <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-2">
+      <div className="mt-4 grid grid-cols-[1.1fr_0.9fr] gap-2">
         <div className="rounded-lg border border-yellow-900/70 bg-yellow-950/30 p-3 sm:p-4">
-          <div className="label text-yellow-600">Effective TC</div>
-          <div className="mt-1 font-mono text-5xl font-black text-yellow-300 sm:text-6xl">{formatNumber(effectiveTc, 2)}</div>
+          <div className="label text-yellow-600">Target Score</div>
+          <div className="mt-1 font-mono text-5xl font-black text-yellow-300 sm:text-6xl">{formatNumber(score, 2)}</div>
         </div>
         <div className="rounded-lg bg-zinc-900 p-3">
           <div className="label">BetOrder</div>
           <div className="mt-3 text-3xl font-black sm:text-4xl">{bet}</div>
         </div>
       </div>
-      <div className="mt-3 border-t border-zinc-800 pt-3">
-        <div className="label">Best Bet</div>
-        <div className="mt-1 text-4xl font-black text-emerald-300 sm:text-5xl">{best}</div>
+      <div className="mt-3 grid grid-cols-[1fr_0.75fr] gap-2 border-t border-zinc-800 pt-3">
+        <div>
+          <div className="label">Best Bet</div>
+          <div className="mt-1 text-4xl font-black text-emerald-300 sm:text-5xl">{best}</div>
+        </div>
+        <div className={`rounded-lg border p-3 ${tieAlertOn ? 'border-emerald-500 bg-emerald-950/60' : 'border-zinc-800 bg-zinc-900'}`}>
+          <div className="label">Tie Alert</div>
+          <div className={`mt-2 text-3xl font-black ${tieAlertOn ? 'text-emerald-300' : 'text-zinc-500'}`}>
+            {tieAlertOn ? 'ON' : 'OFF'}
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
+function CountDetails({
+  rc,
+  betTc,
+  effectiveTc,
+  rest,
+  cutCards,
+  effectiveRestValue,
+  playerRC,
+  bankerRC,
+  tieRC,
+  playerTC,
+  bankerTC,
+  tieTC,
+  score,
+}: {
+  rc: number;
+  betTc: number;
+  effectiveTc: number;
+  rest: number;
+  cutCards: number;
+  effectiveRestValue: number;
+  playerRC: number;
+  bankerRC: number;
+  tieRC: number;
+  playerTC: number;
+  bankerTC: number;
+  tieTC: number;
+  score: number;
+}) {
+  return (
+    <details className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+      <summary className="cursor-pointer text-sm font-black text-zinc-300">COUNT DETAILS</summary>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Metric label="Player RC" value={formatNumber(playerRC, 1)} important />
+        <Metric label="Banker RC" value={formatNumber(bankerRC, 1)} important />
+        <Metric label="Tie RC" value={formatNumber(tieRC, 1)} important />
+        <Metric label="Player TC" value={formatNumber(playerTC, 2)} />
+        <Metric label="Banker TC" value={formatNumber(bankerTC, 2)} />
+        <Metric label="Tie TC" value={formatNumber(tieTC, 2)} />
+        <Metric label="Target Score" value={formatNumber(score, 2)} />
+        <Metric label="Bet-RC" value={formatNumber(rc, 1)} />
+        <Metric label="Bet-TC" value={formatNumber(betTc, 2)} />
+        <Metric label="Effective TC" value={formatNumber(effectiveTc, 2)} />
+        <Metric label="Rest" value={String(rest)} />
+        <Metric label="Cut" value={String(cutCards)} />
+        <Metric label="EffectiveRest" value={String(effectiveRestValue)} />
+      </div>
+    </details>
+  );
+}
+
 function Metric({ label, value, important = false }: { label: string; value: string; important?: boolean }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+    <div className="rounded-lg border border-zinc-800 bg-black p-3">
       <div className="label">{label}</div>
-      <div className={`mt-1 truncate font-mono font-black ${important ? 'text-3xl text-yellow-300' : 'text-2xl'}`}>
+      <div className={`mt-1 truncate font-mono font-black ${important ? 'text-2xl text-yellow-300' : 'text-xl'}`}>
         {value}
       </div>
     </div>
@@ -383,9 +469,22 @@ function ConfigDialog({
     }));
   }
 
+  function setEorWeight(rank: Rank, key: EorWeightKey, value: number) {
+    setDraft((current) => ({
+      ...current,
+      eorWeights: {
+        ...current.eorWeights,
+        [rank]: {
+          ...current.eorWeights[rank],
+          [key]: value,
+        },
+      },
+    }));
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-3 sm:items-center sm:justify-center">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 p-4 shadow-2xl">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 p-4 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-black">CONFIG</h2>
           <button className="control-button w-24 bg-zinc-800" onClick={onCancel}>CANCEL</button>
@@ -415,21 +514,73 @@ function ConfigDialog({
           </section>
 
           <section>
-            <h3 className="config-title">Count Values</h3>
-            <div className="grid grid-cols-2 gap-2">
+            <h3 className="config-title">Decision Thresholds</h3>
+            <NumberField
+              label="Target Score"
+              min={0.1}
+              max={99}
+              step={0.1}
+              value={draft.targetScoreThreshold}
+              onChange={(targetScoreThreshold) => setDraft((current) => ({ ...current, targetScoreThreshold }))}
+            />
+            <NumberField
+              label="Tie Alert TC"
+              min={0.1}
+              max={99}
+              step={0.1}
+              value={draft.tieAlertThreshold}
+              onChange={(tieAlertThreshold) => setDraft((current) => ({ ...current, tieAlertThreshold }))}
+            />
+          </section>
+
+          <section>
+            <h3 className="config-title">EOR Style Weights</h3>
+            <p className="mb-2 text-xs font-semibold text-zinc-500">
+              These EOR values are temporary starting parameters and can be adjusted after testing.
+            </p>
+            <div className="grid grid-cols-[42px_1fr_1fr_1fr] gap-2 text-xs font-black uppercase text-zinc-500">
+              <span>Card</span>
+              <span>Player</span>
+              <span>Banker</span>
+              <span>Tie</span>
+            </div>
+            <div className="mt-2 space-y-2">
+              {RANKS.map((rank) => (
+                <div key={rank} className="grid grid-cols-[42px_1fr_1fr_1fr] items-center gap-2">
+                  <span className="text-sm font-black">{rank}</span>
+                  <CompactNumberField
+                    value={draft.eorWeights[rank].player}
+                    onChange={(value) => setEorWeight(rank, 'player', value)}
+                  />
+                  <CompactNumberField
+                    value={draft.eorWeights[rank].banker}
+                    onChange={(value) => setEorWeight(rank, 'banker', value)}
+                  />
+                  <CompactNumberField
+                    value={draft.eorWeights[rank].tie}
+                    onChange={(value) => setEorWeight(rank, 'tie', value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <details className="rounded-lg border border-zinc-800 bg-black p-3">
+            <summary className="cursor-pointer text-sm font-black text-zinc-300">Legacy Count Values</summary>
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {RANKS.map((rank) => (
                 <NumberField
                   key={rank}
                   label={rank}
                   min={-9}
                   max={9}
+                  step={0.1}
                   value={draft.countValues[rank]}
                   onChange={(value) => setCountValue(rank, value)}
                 />
               ))}
             </div>
-          </section>
-
+          </details>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2">
@@ -450,12 +601,14 @@ function NumberField({
   value,
   min,
   max,
+  step = 1,
   onChange,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (value: number) => void;
 }) {
   return (
@@ -466,10 +619,25 @@ function NumberField({
         type="number"
         min={min}
         max={max}
+        step={step}
         value={value}
         onChange={(event) => onChange(clamp(Number(event.target.value), min, max))}
       />
     </label>
+  );
+}
+
+function CompactNumberField({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <input
+      className="min-w-0 rounded-lg border border-zinc-700 bg-black px-2 py-2 text-right font-mono text-sm font-black text-white"
+      type="number"
+      min={-99}
+      max={99}
+      step={0.1}
+      value={value}
+      onChange={(event) => onChange(clamp(Number(event.target.value), -99, 99))}
+    />
   );
 }
 

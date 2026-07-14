@@ -3,6 +3,8 @@ import type {
   BestBet,
   BetOrder,
   CountValues,
+  EorCounts,
+  EorWeights,
   Rank,
   SimulationResult,
   TargetOrder,
@@ -34,6 +36,17 @@ export function runningCount(history: Rank[], countValues: CountValues) {
   return history.reduce((sum, rank) => sum + countValues[rank], 0);
 }
 
+export function eorRunningCounts(history: Rank[], eorWeights: EorWeights): EorCounts {
+  return history.reduce<EorCounts>(
+    (counts, rank) => ({
+      playerRC: counts.playerRC + eorWeights[rank].player,
+      bankerRC: counts.bankerRC + eorWeights[rank].banker,
+      tieRC: counts.tieRC + eorWeights[rank].tie,
+    }),
+    { playerRC: 0, bankerRC: 0, tieRC: 0 },
+  );
+}
+
 export function trueCount(rc: number, rest: number) {
   if (rest <= 0) return 0;
   return rc / (rest / 52);
@@ -47,18 +60,30 @@ export function effectiveTrueCount(rc: number, effectiveCards: number) {
   return rc / (effectiveCards / 52);
 }
 
-export function targetOrder(effectiveTc: number): TargetOrder {
-  if (effectiveTc >= 1) return 'Player';
-  if (effectiveTc <= -1) return 'Banker';
+export function eorTrueCount(rc: number, effectiveCards: number) {
+  return rc / (effectiveCards / 52);
+}
+
+export function targetScore(playerTC: number, bankerTC: number) {
+  return playerTC - bankerTC;
+}
+
+export function targetOrder(score: number, threshold = 1): TargetOrder {
+  if (score >= threshold) return 'Player';
+  if (score <= -threshold) return 'Banker';
   return 'No Bet';
 }
 
-export function betOrder(effectiveTc: number): BetOrder {
-  const absolute = Math.abs(effectiveTc);
+export function betOrder(score: number): BetOrder {
+  const absolute = Math.abs(score);
   if (absolute < 1) return 'NONE';
   if (absolute < 1.5) return 'LOW';
   if (absolute < 2.5) return 'MID';
   return 'HIGH';
+}
+
+export function tieAlert(tieTC: number, tieEvValue: number, threshold = 1) {
+  return tieTC >= threshold && tieEvValue > 0;
 }
 
 export function playerEv(result: SimulationResult) {
