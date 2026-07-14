@@ -2,7 +2,8 @@ import type { CountValues, EorWeights, Rank, Settings, SimulationResult } from '
 
 export const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 export const DECK_OPTIONS = [1, 2, 4, 6, 8];
-export const MONTE_CARLO_TRIALS = 10_000;
+export const SIMULATION_TRIAL_OPTIONS = [10_000, 50_000, 100_000, 500_000];
+export const MONTE_CARLO_TRIALS = 100_000;
 
 export const DEFAULT_COUNT_VALUES: CountValues = {
   A: -1,
@@ -37,6 +38,10 @@ export const DEFAULT_SETTINGS: Settings = {
   eorWeights: DEFAULT_EOR_WEIGHTS,
   targetScoreThreshold: 1,
   tieAlertThreshold: 1,
+  bankerCommissionRate: 0.05,
+  tieProfitPayout: 9,
+  minimumBetEV: 0.01,
+  simulationTrials: MONTE_CARLO_TRIALS,
 };
 
 export const EMPTY_SIMULATION_RESULT: SimulationResult = {

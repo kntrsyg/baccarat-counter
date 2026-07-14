@@ -1,27 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  bankerEv,
   betOrder,
-  bestBet,
+  calculateEv,
   createRemainingShoe,
   effectiveRest,
   effectiveTrueCount,
   eorRunningCounts,
   eorTrueCount,
   estimateProbabilities,
-  playerEv,
+  probabilitySumWarning,
   remainingPercent,
   runningCount,
   targetOrder,
   targetScore,
   tieAlert,
-  tieEv,
+  tieBreakEvenProbability,
   totalCards,
   trueCount,
 } from './baccarat';
-import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_SIMULATION_RESULT, RANKS } from './constants';
+import { DEFAULT_SETTINGS, DECK_OPTIONS, EMPTY_SIMULATION_RESULT, RANKS, SIMULATION_TRIAL_OPTIONS } from './constants';
 import { loadHistory, loadSettings, saveHistory, saveSettings } from './storage';
-import type { Rank, Settings, SimulationResult } from './types';
+import type { EvResult, Rank, Settings, SimulationResult } from './types';
 
 type EorWeightKey = 'player' | 'banker' | 'tie';
 
@@ -45,9 +44,8 @@ function App() {
   const score = targetScore(playerTC, bankerTC);
   const target = targetOrder(score, settings.targetScoreThreshold);
   const bet = betOrder(score);
-  const best = bestBet(simulation);
-  const tieValue = tieEv(simulation.tie);
-  const isTieAlertOn = tieAlert(tieTC, tieValue, settings.tieAlertThreshold);
+  const evResult = calculateEv(simulation, settings);
+  const isTieAlertOn = tieAlert(tieTC, evResult.tieEV, settings.tieAlertThreshold);
 
   useEffect(() => {
     saveSettings(settings);
@@ -60,12 +58,12 @@ function App() {
   useEffect(() => {
     setIsEstimating(true);
     const timer = window.setTimeout(() => {
-      setSimulation(estimateProbabilities(shoe));
+      setSimulation(estimateProbabilities(shoe, settings.simulationTrials));
       setIsEstimating(false);
-    }, 10);
+    }, 150);
 
     return () => window.clearTimeout(timer);
-  }, [shoe]);
+  }, [shoe, settings.simulationTrials]);
 
   function inputCard(rank: Rank) {
     if (shoe[rank] <= 0) return;
@@ -107,12 +105,18 @@ function App() {
           <div className="space-y-3">
             <OrderPanel
               target={target}
-              bet={bet}
-              best={best}
+              countSignal={bet}
+              evResult={evResult}
               score={score}
               tieAlertOn={isTieAlertOn}
             />
-            <OutcomePanel simulation={simulation} isEstimating={isEstimating} />
+            <OutcomePanel
+              simulation={simulation}
+              evResult={evResult}
+              isEstimating={isEstimating}
+              bankerCommissionRate={settings.bankerCommissionRate}
+              tieProfitPayout={settings.tieProfitPayout}
+            />
             <CountDetails
               rc={rc}
               betTc={betTc}
@@ -152,14 +156,14 @@ function App() {
 
 function OrderPanel({
   target,
-  bet,
-  best,
+  countSignal,
+  evResult,
   score,
   tieAlertOn,
 }: {
   target: string;
-  bet: string;
-  best: string;
+  countSignal: string;
+  evResult: EvResult;
   score: number;
   tieAlertOn: boolean;
 }) {
@@ -172,7 +176,7 @@ function OrderPanel({
 
   return (
     <section className="rounded-lg border border-zinc-700 bg-zinc-950 p-4 text-center sm:p-5">
-      <div className="label">TargetOrder</div>
+      <div className="label">Count Target</div>
       <div className={`mt-2 text-6xl font-black leading-none tracking-normal sm:text-7xl ${tone}`}>{target}</div>
       <div className="mt-4 grid grid-cols-[1.1fr_0.9fr] gap-2">
         <div className="rounded-lg border border-yellow-900/70 bg-yellow-950/30 p-3 sm:p-4">
@@ -180,14 +184,32 @@ function OrderPanel({
           <div className="mt-1 font-mono text-5xl font-black text-yellow-300 sm:text-6xl">{formatNumber(score, 2)}</div>
         </div>
         <div className="rounded-lg bg-zinc-900 p-3">
-          <div className="label">BetOrder</div>
-          <div className="mt-3 text-3xl font-black sm:text-4xl">{bet}</div>
+          <div className="label">Count Signal</div>
+          <div className="mt-3 text-3xl font-black sm:text-4xl">{countSignal}</div>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-[1fr_0.75fr] gap-2 border-t border-zinc-800 pt-3">
-        <div>
-          <div className="label">Best Bet</div>
-          <div className="mt-1 text-4xl font-black text-emerald-300 sm:text-5xl">{best}</div>
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-zinc-800 pt-3">
+        <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-3">
+          <div className="label">Best EV Bet</div>
+          <div className="mt-1 text-4xl font-black text-emerald-300 sm:text-5xl">{evResult.bestBet}</div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+          <div className="label">Best EV</div>
+          <div className={`mt-2 font-mono text-3xl font-black sm:text-4xl ${evTone(evResult.bestEV)}`}>
+            {formatSignedPercent(evResult.bestEV)}
+          </div>
+          <div className="mt-2 border-t border-zinc-800 pt-2">
+            <div className="label">EV Strength</div>
+            <div className="text-2xl font-black">{evResult.strength}</div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_0.75fr] gap-2">
+        <div className="rounded-lg border border-zinc-800 bg-black p-3">
+          <div className="label">EV Decision</div>
+          <div className="mt-1 text-sm font-bold text-zinc-400">
+            Payout-based EV only. Count signals are not used to adjust EV.
+          </div>
         </div>
         <div className={`rounded-lg border p-3 ${tieAlertOn ? 'border-emerald-500 bg-emerald-950/60' : 'border-zinc-800 bg-zinc-900'}`}>
           <div className="label">Tie Alert</div>
@@ -264,12 +286,18 @@ function Metric({ label, value, important = false }: { label: string; value: str
 
 function OutcomePanel({
   simulation,
+  evResult,
   isEstimating,
+  bankerCommissionRate,
+  tieProfitPayout,
 }: {
   simulation: SimulationResult;
+  evResult: EvResult;
   isEstimating: boolean;
+  bankerCommissionRate: number;
+  tieProfitPayout: number;
 }) {
-  const tieValue = tieEv(simulation.tie);
+  const hasProbabilityWarning = probabilitySumWarning(simulation);
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
@@ -279,30 +307,44 @@ function OutcomePanel({
           {isEstimating ? 'SIMULATING' : `${formatInteger(simulation.trialCount)} TRIALS`}
         </span>
       </div>
+      {hasProbabilityWarning && (
+        <div className="mb-3 rounded-lg border border-yellow-700 bg-yellow-950/40 px-3 py-2 text-xs font-bold text-yellow-200">
+          Probability total warning: Player + Banker + Tie is not close to 100%.
+        </div>
+      )}
 
       <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-4 text-center">
         <div className="text-lg font-black text-emerald-200">Tie</div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <OutcomeValue label="Probability" value={formatPercent(simulation.tie)} large />
-          <OutcomeValue label="EV (9x)" value={formatSignedPercent(tieValue)} large tone={evTone(tieValue)} />
+          <OutcomeValue
+            label={`EV (${formatNumber(tieProfitPayout, 2)}x)`}
+            value={formatSignedPercent(evResult.tieEV)}
+            large
+            tone={evTone(evResult.tieEV)}
+          />
         </div>
         <HitCount hits={simulation.tieCount} trials={simulation.trialCount} />
+        <div className="mt-2 text-xs font-bold text-zinc-400">
+          Break-even {formatPercent(tieBreakEvenProbability(tieProfitPayout))}
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
         <OutcomeCard
           label="Player"
           probability={simulation.playerWin}
-          ev={playerEv(simulation)}
+          ev={evResult.playerEV}
           hits={simulation.playerWinCount}
           trials={simulation.trialCount}
         />
         <OutcomeCard
           label="Banker"
           probability={simulation.bankerWin}
-          ev={bankerEv(simulation)}
+          ev={evResult.bankerEV}
           hits={simulation.bankerWinCount}
           trials={simulation.trialCount}
+          payoutLabel={`${formatNumber(1 - bankerCommissionRate, 2)}x net`}
         />
       </div>
     </section>
@@ -315,18 +357,21 @@ function OutcomeCard({
   ev,
   hits,
   trials,
+  payoutLabel,
 }: {
   label: string;
   probability: number;
   ev: number;
   hits: number;
   trials: number;
+  payoutLabel?: string;
 }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
       <div className="text-sm font-black text-zinc-200">{label}</div>
       <OutcomeValue label="Probability" value={formatPercent(probability)} />
       <OutcomeValue label="EV" value={formatSignedPercent(ev)} tone={evTone(ev)} />
+      {payoutLabel && <div className="mt-1 text-xs font-bold text-zinc-500">{payoutLabel}</div>}
       <HitCount hits={hits} trials={trials} />
     </div>
   );
@@ -363,6 +408,7 @@ function HitCount({ hits, trials }: { hits: number; trials: number }) {
 }
 
 function evTone(ev: number) {
+  if (!Number.isFinite(ev) || Math.abs(ev) < 0.00005) return 'text-zinc-200';
   return ev > 0 ? 'text-emerald-300' : 'text-zinc-400';
 }
 
@@ -534,6 +580,49 @@ function ConfigDialog({
           </section>
 
           <section>
+            <h3 className="config-title">EV Payout Rules</h3>
+            <NumberField
+              label="Minimum Bet EV"
+              min={-1}
+              max={1}
+              step={0.001}
+              value={draft.minimumBetEV}
+              onChange={(minimumBetEV) => setDraft((current) => ({ ...current, minimumBetEV }))}
+            />
+            <NumberField
+              label="Banker Commission"
+              min={0}
+              max={1}
+              step={0.01}
+              value={draft.bankerCommissionRate}
+              onChange={(bankerCommissionRate) => setDraft((current) => ({ ...current, bankerCommissionRate }))}
+            />
+            <NumberField
+              label="Tie Profit Payout"
+              min={1}
+              max={99}
+              step={0.1}
+              value={draft.tieProfitPayout}
+              onChange={(tieProfitPayout) => setDraft((current) => ({ ...current, tieProfitPayout }))}
+            />
+          </section>
+
+          <section>
+            <h3 className="config-title">Simulation Trials</h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SIMULATION_TRIAL_OPTIONS.map((trials) => (
+                <button
+                  key={trials}
+                  className={`h-11 rounded-lg text-sm font-black ${draft.simulationTrials === trials ? 'bg-white text-black' : 'bg-zinc-800 text-white'}`}
+                  onClick={() => setDraft((current) => ({ ...current, simulationTrials: trials }))}
+                >
+                  {formatInteger(trials)}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section>
             <h3 className="config-title">EOR Style Weights</h3>
             <p className="mb-2 text-xs font-semibold text-zinc-500">
               These EOR values are temporary starting parameters and can be adjusted after testing.
@@ -642,6 +731,7 @@ function CompactNumberField({ value, onChange }: { value: number; onChange: (val
 }
 
 function formatNumber(value: number, digits: number) {
+  if (!Number.isFinite(value)) return '--';
   return value.toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -649,10 +739,12 @@ function formatNumber(value: number, digits: number) {
 }
 
 function formatInteger(value: number) {
+  if (!Number.isFinite(value)) return '--';
   return value.toLocaleString('en-US');
 }
 
 function formatPercent(value: number, digits = 2) {
+  if (!Number.isFinite(value)) return '--';
   return value.toLocaleString('en-US', {
     style: 'percent',
     minimumFractionDigits: digits,
@@ -661,6 +753,7 @@ function formatPercent(value: number, digits = 2) {
 }
 
 function formatSignedPercent(value: number) {
+  if (!Number.isFinite(value)) return '--';
   const formatted = formatPercent(value);
   return value > 0 ? `+${formatted}` : formatted;
 }

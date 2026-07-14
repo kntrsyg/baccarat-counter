@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, RANKS } from './constants';
+import { DEFAULT_SETTINGS, RANKS, SIMULATION_TRIAL_OPTIONS } from './constants';
 import type { Rank, Settings } from './types';
 
 const SETTINGS_KEY = 'baccarat-counter.settings.v1';
@@ -46,6 +46,15 @@ export function loadSettings(): Settings {
         99,
       ),
       tieAlertThreshold: normalizeNumber(parsed.tieAlertThreshold, DEFAULT_SETTINGS.tieAlertThreshold, 0.1, 99),
+      bankerCommissionRate: normalizeNumber(
+        parsed.bankerCommissionRate,
+        DEFAULT_SETTINGS.bankerCommissionRate,
+        0,
+        1,
+      ),
+      tieProfitPayout: normalizeNumber(parsed.tieProfitPayout, DEFAULT_SETTINGS.tieProfitPayout, 1, 99),
+      minimumBetEV: normalizeNumber(parsed.minimumBetEV, DEFAULT_SETTINGS.minimumBetEV, -1, 1),
+      simulationTrials: normalizeSimulationTrials(parsed.simulationTrials),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -77,4 +86,9 @@ export function saveHistory(history: Rank[]) {
 function normalizeNumber(value: unknown, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Number(value)));
+}
+
+function normalizeSimulationTrials(value: unknown) {
+  const numeric = Number(value);
+  return SIMULATION_TRIAL_OPTIONS.includes(numeric) ? numeric : DEFAULT_SETTINGS.simulationTrials;
 }

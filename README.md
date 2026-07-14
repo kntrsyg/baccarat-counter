@@ -12,12 +12,13 @@ A React, TypeScript, Vite, and Tailwind CSS web app for baccarat card tracking a
 - EOR-style Player / Banker / Tie running counts
 - Player TC, Banker TC, Tie TC, and Target Score
 - Legacy Bet-RC, Bet-TC, and Effective TC detail display
-- TargetOrder, BetOrder, Tie Alert, and Best Bet
+- Count Target, Count Signal, Tie Alert, Best EV Bet, Best EV, and EV Strength
 - Player, Banker, and Tie probabilities
-- Player, Banker, and Tie EV display
-- Win counts from 10,000 Monte Carlo trials
-- Best Bet selects the highest positive EV; otherwise it displays No Bet
+- Real payout-based Player, Banker, and Tie EV display
+- Win counts from configurable Monte Carlo trials
+- Best EV Bet uses the highest EV only when it reaches the configured minimum EV
 - Configurable Player / Banker / Tie card weights, Target Score threshold, and Tie Alert threshold
+- Configurable Banker commission, Tie profit payout, minimum bet EV, and simulation trials
 - localStorage persistence
 - No external network calls from the app
 
@@ -26,6 +27,20 @@ A React, TypeScript, Vite, and Tailwind CSS web app for baccarat card tracking a
 The main decision engine uses separate EOR-style weights for Player, Banker, and Tie. Each entered card updates `playerRC`, `bankerRC`, and `tieRC`; each RC is converted to TC using the cut-card adjusted effective deck count. `Target Score = Player TC - Banker TC`.
 
 The included EOR values are temporary starting parameters for the first implementation and can be adjusted in CONFIG after practical testing and verification.
+
+## EV Model
+
+EV is calculated only from the current Player / Banker / Tie probabilities and configured payout rules. EOR counts, RC, TC, and Target Score are signal displays only and do not adjust EV.
+
+- Player EV: `pPlayer - pBanker`
+- Banker EV: `pBanker * (1 - bankerCommissionRate) - pPlayer`
+- Tie EV: `pTie * tieProfitPayout - (1 - pTie)`
+- Default Banker commission: `0.05`
+- Default Tie profit payout: `9`
+- Default minimum bet EV: `0.01`
+- Default simulation trials: `100,000`
+
+Tie profit payout is pure profit. A 9x Tie payout means 9x profit and 10x total return including the stake.
 
 ## Tech Stack
 
@@ -46,6 +61,13 @@ pnpm run dev
 
 ```bash
 pnpm run build
+```
+
+## Tests
+
+```bash
+pnpm run test:ev
+pnpm run verify:initial
 ```
 
 ## Preview

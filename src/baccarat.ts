@@ -1,6 +1,5 @@
 import { EMPTY_SIMULATION_RESULT, MONTE_CARLO_TRIALS, RANKS } from './constants';
 import type {
-  BestBet,
   BetOrder,
   CountValues,
   EorCounts,
@@ -9,6 +8,18 @@ import type {
   SimulationResult,
   TargetOrder,
 } from './types';
+export {
+  bankerEv,
+  bestBet,
+  calculateEv,
+  formatEvPercent,
+  getBetStrength,
+  playerEv,
+  probabilitySum,
+  probabilitySumWarning,
+  tieBreakEvenProbability,
+  tieEv,
+} from './evMath';
 
 export type Shoe = Record<Rank, number>;
 
@@ -84,28 +95,6 @@ export function betOrder(score: number): BetOrder {
 
 export function tieAlert(tieTC: number, tieEvValue: number, threshold = 1) {
   return tieTC >= threshold && tieEvValue > 0;
-}
-
-export function playerEv(result: SimulationResult) {
-  return result.playerWin - result.bankerWin;
-}
-
-export function bankerEv(result: SimulationResult) {
-  return result.bankerWin * 0.95 - result.playerWin;
-}
-
-export function tieEv(tieProbability: number) {
-  return tieProbability * 9 - (1 - tieProbability);
-}
-
-export function bestBet(result: SimulationResult): BestBet {
-  const candidates: Array<{ name: Exclude<BestBet, 'No Bet'>; ev: number }> = [
-    { name: 'Player', ev: playerEv(result) },
-    { name: 'Banker', ev: bankerEv(result) },
-    { name: 'Tie', ev: tieEv(result.tie) },
-  ];
-  const best = candidates.reduce((current, candidate) => candidate.ev > current.ev ? candidate : current);
-  return best.ev > 0 ? best.name : 'No Bet';
 }
 
 export function remainingPercent(shoe: Shoe, rank: Rank) {
